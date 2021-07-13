@@ -56,7 +56,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         _______,  _______, _______, _______, _______,
         _______,  _______, _______, _______, _______,
         _______,  _______, _______, _______, _______,
-						   
+
                   _______, _______, _______
 
     ),
@@ -67,13 +67,13 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         _______,  _______, _______, _______, _______,
         _______,  _______, _______, _______, _______,
         _______,  _______, _______, _______, _______,
-    
+
                   _______, _______, _______
 
     )
 };
 
-#ifdef ENCODER_ENABLE
+/* #ifdef ENCODER_ENABLE
 bool encoder_update_user(uint8_t index, bool clockwise) {
     switch (index) {
         case 0:
@@ -93,6 +93,130 @@ bool encoder_update_user(uint8_t index, bool clockwise) {
     }
     return true;
 }
+#endif */
+
+/*  These are needed whether encoder function is enabled or not when ENCFUNC keycode is pressed.
+    Defaults never changes if no encoder present to change it
+*/
+typedef struct {
+     char keydesc[6];    // this will be displayed on OLED
+    uint16_t keycode;   // this is the keycode that will be sent when activted
+} keycodedescType;
+
+static const keycodedescType PROGMEM keyselection[] = {
+    // list of key codes that will be scrollled through by encoder and description
+        {"TASK",    KC_TASK},
+        {"INS",     KC_INS},
+        {"DEL",     KC_DEL},
+        {"PrtSc",   KC_PSCR},
+        {"ScrLk",   KC_SCLN},
+        {"Break",   KC_PAUS},
+        {"C-A-D",   KC_CAD},  // Ctrl-Alt-Del
+        {"AltF4",   KC_AF4},
+        {"PLAY",    KC_MEDIA_PLAY_PAUSE}
+};
+
+#define MAX_KEYSELECTION sizeof(keyselection)/sizeof(keyselection[0])
+
+static uint8_t selectedkey_idx = 0;
+static keycodedescType selectedkey_rec;
+
+static void set_selectedkey(uint8_t idx) {
+    // make a copy from PROGMEM
+    memcpy_P (&selectedkey_rec, &keyselection[idx], sizeof selectedkey_rec);
+
+    //selectedkey_rec = keyselection[idx];
+
+}
+
+void keyboard_post_init_user(void) {
+  // Call the keyboard post init code.
+    //selectedkey_rec = keyselection[selectedkey_idx];
+    set_selectedkey(selectedkey_idx);
+}
+
+bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+    switch (keycode) {
+    case ENCFUNC:
+        if (record->event.pressed) {
+            tap_code16(selectedkey_rec.keycode);
+        } else {
+            // when keycode is released
+        }
+        break;
+    }
+    return true;
+};
+
+
+#ifdef ENCODER_ENABLE       // Encoder Functionality
+    uint8_t selected_layer = 0;
+
+    bool encoder_update_user(uint8_t index, bool clockwise) {
+        #ifdef OLED_DRIVER_ENABLE
+            oled_clear();
+            oled_render();
+        #endif
+        switch (index) {
+            case 0:         // This is the only encoder right now, keeping for consistency
+                switch(get_highest_layer(layer_state)){  // special handling per layer
+                case _FN1:  // on Fn layer select what the encoder does when pressed
+                    if (!keyboard_report->mods) {
+                        if ( clockwise ) {
+                            if ( selectedkey_idx  < MAX_KEYSELECTION-1) {
+                                selectedkey_idx ++;
+                            } else {
+                               // do nothing
+                            }
+                        } else if ( !clockwise ) {
+                            if ( selectedkey_idx  > 0){
+                                selectedkey_idx --;
+                            } else {
+                                // do nothing
+                            }
+                        }
+                        set_selectedkey(selectedkey_idx);
+                        break;
+                    } else {
+                           // continue to default
+                    }
+                default:   // all other layers
+                    if ( clockwise ) {
+                        if ( selected_layer  < 3 && keyboard_report->mods & MOD_BIT(KC_LSFT) ) { // If you are holding L shift, encoder changes layers
+                            selected_layer ++;
+                            layer_move(selected_layer);
+                        } else if (keyboard_report->mods & MOD_BIT(KC_LCTL)) {  // if holding Left Ctrl, navigate next word
+                             tap_code16(LCTL(KC_RGHT));
+                        } else if (keyboard_report->mods & MOD_BIT(KC_LALT)) {  // if holding Left Alt, change media next track
+                            tap_code(KC_MEDIA_NEXT_TRACK);
+                        } else  {
+                            tap_code(KC_VOLU);                                                   // Otherwise it just changes volume
+                        }
+                    } else if ( !clockwise ) {
+                        if ( selected_layer  > 0 && keyboard_report->mods & MOD_BIT(KC_LSFT) ) {
+                            selected_layer --;
+                            layer_move(selected_layer);
+                        } else if (keyboard_report->mods & MOD_BIT(KC_LCTL)) {  // if holding Left Ctrl, navigate previous word
+                            tap_code16(LCTL(KC_LEFT));
+                        } else if (keyboard_report->mods & MOD_BIT(KC_LALT)) {  // if holding Left Alt, change media previous track
+                            tap_code(KC_MEDIA_PREV_TRACK);
+                        } else {
+                            tap_code(KC_VOLD);
+                        }
+                    }
+                    break;
+                }
+                break;
+            case 1:
+                if (clockwise) {
+                    tap_code(KC_BRIU);
+                } else {
+                    tap_code(KC_BRID);
+                }
+                break;
+        }
+        return true;
+    }
 #endif
 
 #ifdef OLED_DRIVER_ENABLE
